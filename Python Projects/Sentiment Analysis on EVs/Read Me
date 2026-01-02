@@ -1,6 +1,6 @@
 This project analyzes New York Times articles related to Electric Vehicles (EVs) using the NYT API. It involves collecting article data, performing keyword frequency analysis, and conducting sentiment analysis on article comments. The project aims to understand media coverage trends and public sentiment around EVs over time.
 
-Key Findings
+Key Findings:
 
 Most frequent EV-related keywords: electric (52), cars (23), vehicles (17)
 Coverage spans from technology to business implications
