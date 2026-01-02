@@ -1,0 +1,177 @@
+---
+title: "Predicting Auction Competitiveness Using Logistic Regression"
+author: "Rezoon Rasheed"
+date: "OCtober 2024"
+format: html
+editor: source
+self-contained: true
+toc: true
+toc-expand: true
+toc-depth: 3
+---
+
+
+```{r setup, include=FALSE}
+rm(list = ls()) # clears global environment
+knitr::opts_knit$set(root.dir = '/Users/rez/Desktop/First Semester/QTM6300 Machine Learning for business/Data for class')
+```
+
+# Context
+
+Let’s take a look at the data located in ebayAuctions.csv. Each row represents an auction, with the columns specifying various auction characteristics, including information about the seller (SellerRating) and the item (Category). Our goal here is to predict whether the auction will turn out to be competitive (Competitive), here defined as receiving 2 or more bids. This type of prediction is crucial for any type of automated trading algorithm, as we would like to find auctions with relatively little competition in the hopes of getting a better final price.
+
+
+# Import Data and Data Management
+
+1. We’ll be trying predict competitiveness (use the Competitive variable as the target) using a logistic regression model. To get ready for modeling, complete the following data management steps:
+
+* Since we’re thinking about making our predictions of competitiveness at the beginning of the auction, we can really in good faith use ClosePrice; remove it from the data frame.
+
+* Convert the target to a logical.
+
+* Convert other variables to factors as necessary.
+
+* Partition the data using a 60-40 training-test split using random seed 1234.
+
+
+```{r}
+df <- read.csv("eBayAuctions.csv")
+df$Competitive <- as.logical(df$Competitive)
+df$ClosePrice <- NULL
+df$EndDay <- as.factor(df$EndDay)
+df$Currency <- as.factor(df$Currency)
+df$Category <- as.factor(df$Category)
+```
+
+# Partition
+
+2. Please set up training partition as 60% of the data, and test data as the rest.
+
+```{r}
+set.seed(1234)
+N <- nrow(df)
+trainingSize <- round(N*0.6)
+trainingCases <- sample(N, trainingSize)
+training <- df[trainingCases,]
+test <- df[-trainingCases,]
+```
+
+
+# Build Model
+
+3. Construct a logistic regression model for Competitive as a function of all other available variables. Afterwards, create a new model by conducting backward stepwise variable elimination. We'll be using this smaller and more efficient model for the remainder of the questions here. 
+
+
+```{r}
+model1 <- glm(Competitive ~ ., data=training, family=binomial)
+summary(model1)
+
+options(scipen=100)
+
+model2 <- step(model1)
+summary(model2)
+
+exp(-0.10346904)
+ exp(1.42931060)
+```
+
+
+
+# Interpret
+
+4. Try to interpret the coefficient for Duration.
+
+Answer: If all Else kept constant, the odds of the auction being competitive decreases by e^-0.10346904 =  0.9017039 odds ratio ==> So the odds of the auction being competitive, if all else kept constant, if 1 unit of duration increase then the chances decrease by (1-0.9017039)=0.09829 which is 9.83 percent. 
+
+5. Try to interpret the coefficient for CurrencyGBP. Note that this variable is a dummy for Currency being British Pounds.
+
+Answer: The coefficient of 1.429 means that when the auction is listed in British Pounds (GBP), the log-odds of the auction being competitive increase by 1.429 compared to auctions listed in Euros, holding all other factors constant.
+
+
+# Evaluating Model
+
+6. Using a cut-off probability of 0.5, what is the error rate associated with your model? Use R to calculate it. 
+
+Answer:
+
+
+```{r}
+
+# store probabilities.   type=response (gives probabilities)
+test$predictions <- predict(model2, test, type="response")
+predictions <- test$predictions
+#store TRUE/Falses 
+test$predictionsTF <- (test$predictions >= 0.5)
+predictionsTF <- test$predictionsTF
+
+# store observed values too
+observations <-test$Competitive
+
+#Error Rate
+error_rate <- sum(predictionsTF != observations)/nrow(test)
+error_rate
+
+```
+
+
+
+
+## Error Rate
+
+7. Show the confusion matrix. Then, calculate the error rate manually by using R as a calculator using the numbers shown in the confusion matrix. Make sure this is the same as your previous error rate calculation in R!
+
+```{r}
+
+#Confusion Matrix
+table(predictionsTF, test$Competitive)
+
+(174+112)/(202+112+174+301)
+
+```
+
+## Benchmark Error Rate
+
+8. What is the Benchmark Error Rate? Does this show to be a useful model?
+
+Answer:
+
+```{r}
+source("BabsonAnalytics.R")
+error_bench <- benchmarkErrorRate(training$Competitive, test$Competitive)
+error_bench
+```
+
+
+# Sensitivity and Specificity
+
+9. Calculate the sensitivity and specificity for the default cutoff probability (which is 0.5).
+
+Answer:
+
+```{r}
+sensitivity <- sum(predictionsTF == TRUE & observations == TRUE)/sum(observations == TRUE)
+sensitivity
+
+specificity <- sum(predictionsTF == FALSE & observations == FALSE)/sum(observations == FALSE)
+specificity
+
+```
+
+
+# ROC Chart
+
+10. Imagine we now increase the cut-off probability from 0.5 to 0.6. Does the specificity increase or decrease? How do you know?
+
+Answer: As the cut off value is increased, there is a higher proportion of correct negatives in the proportion, and when placed in the formula of TN/(TN+FN), specificity tend to increase.
+
+11. Using the ROC Chart, does it show that the model is more or less useful than the benchmark? How do you know?
+
+```{r}
+ROCChart(observations, predictions)
+
+
+# The model is more useful then the Error bench mark, as the error rate is lower than the benchmark which is 0.47655 and 0.362484 respectively. Besides this the Sensitivity value is also above the average with 72.88% true positives predicted correctly. Along with it, the ROC cureve is also above the benchmark line and the AUC being 0.68 which is quite significant, but the model could be improved by getting a model which has values even closer to the ideal point.
+```
+
+
+

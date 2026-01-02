@@ -1,0 +1,224 @@
+---
+title: "Ensemble Methods:
+Ensemble Learning for Personal Loan Classification"
+author: "Rezoon Rasheed"
+date: "10/08/2024"
+output:
+  rmdformats::readthedown:
+    number_sections: true
+    highlight: tango
+    df_print: paged
+    center: true
+---
+
+```{r setup, include=FALSE}
+rm(list = ls()) # clears global environment
+knitr::opts_knit$set(root.dir = '/Users/rez/Desktop/First Semester/QTM6300 Machine Learning for business/Data for class')
+```
+
+
+# Context
+
+Let’s take a look at the data located in UniversalBank.csv. Each row represents a customer at small but rapidly growing bank. The columns measure all sorts of customer characteristics, ranging from their demographic information (e.g., Age, Family) to whether they currently have various accounts open with the bank (e.g., Securities Account, CD Account). For a complete description of the fields, consult the data page on Canvas.
+
+The bank is aggressively trying to convert customers from depositors into borrowers through its personal loan program. The column **Personal Loan** shows whether each customer responded to a direct marketing campaign related to this program. The marketing team is now trying to understand what types of customers responds to new personal loans marketing. If they can establish reasonably strong predictive power, they will deploy the model more widely across their customer base to identify promising leads and a more nuanced target market.
+
+
+## Question 1
+
+Do the following:
+
+* Import the data as "bank"
+
+* Remove any predictor that might be inappropriate for this activity.
+
+* Set the target to logical.
+
+```{r}
+bank <- read.csv('UniversalBank.csv')
+
+bank$Personal.Loan <- as.logical(bank$Personal.Loan)
+bank$ID <- NULL
+bank$ZIP.Code <- NULL
+
+factor_columns = c("Family","Education","Securities.Account","CD.Account","Online","CreditCard")
+bank[factor_columns] = lapply(bank[factor_columns], factor)
+
+```
+
+
+## Question 2
+
+* Set a seed of 109 and partition a training set with 72% of the data.
+
+* Run a Classification Tree to predict Personal.Loan, make the predictions, and calculate the error rate. What is the error rate?
+
+Answer: The error rate for classification tree is  0.01642857.
+
+```{r}
+# Set a training and test set
+set.seed(109)
+N = nrow(bank)
+trainingSize  = round(N*0.72)
+trainingCases = sample(N, trainingSize)
+training  = bank[trainingCases,]
+test      = bank[-trainingCases,]
+
+# Run a single Classification Tree model and calculate its error rate
+library(rpart)
+model = rpart(Personal.Loan ~ ., data=training)
+pred = predict(model, test)
+pred = (pred > 0.5)
+library(rpart.plot)
+rpart.plot(model)
+error_tree = sum(pred!=test$Personal.Loan)/nrow(test)
+error_tree
+```
+
+
+## Question 3
+
+Bagging: Run a random forest model where you set the number of trees to 1000. Make the predictions and calculate the error rate. What is the error rate? Does this improve on the original single Classification Tree model?
+
+Answer:  The error rate of the random forest is 0.01214286. This error rate is less than the single classification tree error rate which was 0.01642857, thus suggesting the random forest model is better.
+
+```{r}
+#install.packages("randomForest")
+library(randomForest)
+
+rf = randomForest(Personal.Loan ~ ., data= training, ntree=1000)
+pred_rf = predict(rf, test)
+pred_rf = (pred_rf > 0.5)
+
+error_randomforest = sum(pred_rf!=test$Personal.Loan)/nrow(test)
+error_randomforest
+```
+
+
+
+## Question 4
+
+* Boosting: Set a new seed to 23 and run a boosted tree model with 500 trees and 5 folds. Determine the best tree size. What is this size? Then use this "best tree size" to run another boosted tree model.
+
+* Make the predictions and calculate the error rate. What is the error rate? If this error rate is wose than one or more of your previous models, what do you think might have happened?
+
+Answer: The error rate of the boosted model is  0.02142857, which is a higher error rate than the previous models. This may suggest that the best size for the ntrees was not achieved and thus there was an increased error when tested. An evidence to this could be that the after running gbm.perf(boost), the best size remained the same.
+
+
+```{r}
+training$Personal.Loan <- as.integer(training$Personal.Loan)
+
+#install.packages("gbm")
+library(gbm)
+
+set.seed(23) # we can set the seed to get optimal best_size for trees later, though it can vary greatly due to cross-validation without seed.
+# We start with large amount of trees, but we can use cross-validation later to assess best number of trees
+boost = gbm(Personal.Loan ~ ., data=training,n.trees=500, cv.folds=5)
+
+best_size <- gbm.perf(boost,method="cv")
+gbm.perf(boost) #tells us the best number of models
+best_size
+# Run the model again with best tree size
+boost = gbm(Personal.Loan ~ ., data=training,n.trees=500, cv.folds=5)
+
+# Make predictions
+pred_boost  = predict(boost, test, n.trees=best_size, type="response")
+pred_boost = (pred_boost > 0.5)
+
+#calculate errors
+error_boost = sum(pred_boost != test$Personal.Loan)/nrow(test)
+
+error_boost
+```
+
+
+## Question 5
+
+* Now, run a logistic regression model to predict Personal.Loan. Refine the model using the step() function.
+* Make the predictions. Use a cutoff of 0.5. 
+* Calculate the error rate. What is the error rate?
+
+Answer: The error rate for the logistic regression was 0.035.
+
+
+```{r}
+training$Personal.Loan <- as.logical(training$Personal.Loan)
+
+set.seed(109)
+
+traininglg <- bank[trainingCases,]
+testlg <- bank[-trainingCases,]
+
+modellg <- glm(Personal.Loan ~ ., data=traininglg, family=binomial)
+summary(modellg)
+
+options(scipen=100)
+
+modellg2 <- step(modellg)
+summary(modellg2)
+
+# store probabilities.   type=response (gives probabilities)
+testlg$predictions <- predict(modellg2, testlg, type="response")
+predictions <- testlg$predictions
+#store TRUE/Falses 
+testlg$predictionsTF <- (testlg$predictions >= 0.5)
+predictionsTF <- testlg$predictionsTF
+
+# store observed values too
+observations <-testlg$Personal.Loan
+
+#Error Rate
+error_ratelg <- sum(predictionsTF != observations)/nrow(testlg)
+error_ratelg
+
+```
+
+
+# Question 6
+
+* Now, try to do stacking by combining the  Random Forest model, the Boosted model, and the logistic regression model. What is your error rate?
+
+Answer: The error rate of the the stacking model came out to be 0.01214286.
+
+```{r}
+
+# First, get the predictions for all of data frame observations, not just test. Predictions made for entire dataframe.
+pred_rf_full = predict(rf, bank)
+pred_rf_full = (pred_rf_full > 0.5)
+
+pred_boost_full = predict(boost, bank, n.trees=best_size, type="response")
+pred_boost_full = (pred_boost_full > 0.5)
+
+pred_log_full <- predict(modellg2, bank, type="response")
+pred_log_full <- (pred_log_full > 0.5)
+
+bank_stacked = cbind(bank,pred_boost_full, pred_rf_full, pred_log_full)
+
+bank_stacked$Personal.Loan = as.logical(bank$Personal.Loan)
+
+# Set the training and test data; now these sets have the predictions! thats why we have df_stacked 
+train_stacked = bank_stacked[trainingCases, ]
+test_stacked = bank_stacked[-trainingCases, ]
+
+# Run the stacked algorithm, where the manager/meta model is a logistic model. 
+stacked = glm(Personal.Loan ~ ., data = train_stacked, family=binomial)
+
+# Make the predictions
+pred_stacked = predict(stacked, test_stacked, type="response")
+pred_stacked = (pred_stacked > 0.5)
+
+# Calculate error rate
+error_stacked = sum(pred_stacked != test$Personal.Loan)/nrow(test)
+
+error_stacked
+
+```
+
+
+
+## Question 7
+
+Which ensemble method lowered the error the most? 
+
+Answer:The random forest and stacked model had the same least error rate considering the models we ran within this workbook, with the error rate being 0.01214286.
+
